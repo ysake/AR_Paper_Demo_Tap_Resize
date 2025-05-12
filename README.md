@@ -10,7 +10,7 @@ visionOS 2.0 以降で、手指の物理タップによる用紙配置と両手�
 
 ## インストール
 1. リポジトリをクローン
-   ```bash
+```bash
 git clone https://github.com/ユーザ名/AR_Paper_Demo_Tap_Resize.git
 cd AR_Paper_Demo_Tap_Resize
 ````
