@@ -8,46 +8,62 @@
 
 ---
 
-## 1. セッションの開始
+## 【重要な知見】visionOSでの平面検出・可視化の現状
+- visionOSのRealityKit/ARKitにはiOSのARPlaneAnchorは存在しない。
+- 平面検出・可視化・イベント取得にはPlaneDetectionProviderとPlaneAnchorを利用するのが推奨パターン。
+- PlaneAnchorはextent（平面サイズ）やalignment（向き）などのプロパティを持つため、検出した平面の大きさ・形状に一致するMeshResource.generatePlaneを生成できる。
+- これにより「検出した平面全体に一致する半透明の面」の可視化が可能。
+- PlaneDetectionProviderの利用にSpatialTrackingSessionは必須ではない。
+- ただし、手指トラッキング（HandTrackingProvider）を利用する場合は、SpatialTrackingSessionを使うことも選択肢となる。
+- 今後のAPI拡張やvisionOSアップデートで状況が変わる可能性があるため、最新情報を随時確認することが重要。
+
+---
+
+## 【補足知見】AnchorEntity(.plane)の限界について
+- RealityKitのAnchorEntity(.plane)は、iOSのARPlaneAnchorのようなextent（平面サイズ）やboundary（境界情報）を持たない。
+- そのため、AnchorEntity(.plane)単体では「検出した平面の正確な大きさ・形状に合わせた可視化」や「平面上の正確な衝突位置取得」はできない。
+- 今後のステップで「平面と指の衝突位置に紙を配置」などの高度なAR体験を実現するには、PlaneDetectionProvider＋PlaneAnchor（extentを持つ）を使う方式が必須となる。
+
+---
+
+## 1. 平面検出の開始（PlaneDetectionProvider）
 
 ```swift
-@State var trackingSession = SpatialTrackingSession()
-
-.task {
-  let config = SpatialTrackingSession.Configuration(
-    tracking: [.hand, .plane]
-  )
-  await trackingSession.run(config)
-}
+let planeDetectionProvider = PlaneDetectionProvider()
+planeDetectionProvider.start()
 ```
 
-* `SpatialTrackingSession.run()` で平面検出と手指トラッキングを同時に有効化。
+* PlaneDetectionProviderをインスタンス化し、start()で平面検出を開始する。
+* 検出イベントやPlaneAnchorの取得は、PlaneDetectionProviderのイベントやクエリを利用する。
 
-## 2. 平面検出 (AnchorEntity(.plane))
+---
+
+## 2. 平面検出と可視化（PlaneDetectionProvider + PlaneAnchor）
 
 ```swift
-let planeAnchor = AnchorEntity(
-  .plane(.horizontal,
-         classification: .any,
-         minimumBounds: [0.2, 0.2])
-)
-arView.scene.anchors.append(planeAnchor)
+// PlaneDetectionProviderで平面検出を有効化した状態で、
+// 検出されたPlaneAnchorごとに以下の処理を行う
+
+let extent = planeAnchor.extent // [width, depth]
+let mesh = MeshResource.generatePlane(width: extent.x, depth: extent.y)
+let material = SimpleMaterial(color: .blue.withAlphaComponent(0.3), isMetallic: false)
+let planeEntity = ModelEntity(mesh: mesh, materials: [material])
+planeEntity.position = .zero
+planeAnchor.addChild(planeEntity)
+scene.anchors.append(planeAnchor)
 ```
 
-* `.horizontal`＋`classification: .any`＋`minimumBounds` により、条件に合う水平面すべてに自動でアンカーを生成。
-* `minimumBounds` を指定しないと微小な平面断片にもアンカーが生成され、ノイズやパフォーマンス低下の原因となる。
+* PlaneAnchorのextentを使うことで、検出した平面の大きさに一致した可視化が可能。
+* 平面の更新イベント（サイズ変化など）があれば、planeEntityのスケールやメッシュを動的に更新する。
 
-## 3. 手指トラッキング (AnchorEntity(.hand))
+---
 
-```swift
-let leftTipAnchor = AnchorEntity(
-  .hand(.left, location: .indexFingerTip),
-  trackingMode: .continuous
-)
-arView.scene.anchors.append(leftTipAnchor)
-```
+## 3. 手指トラッキング（HandTrackingProvider or SpatialTrackingSession）
 
-* `AnchorEntity(.hand)` は ARKit の Hand Tracking Provider と連携し、人差し指先の座標を毎フレーム更新。
+- visionOSではHandTrackingProviderを直接利用する方法と、SpatialTrackingSession経由で手指トラッキングを有効化する方法がある。
+- どちらの方式も選択肢となるが、用途やAPI設計に応じて使い分ける。
+
+---
 
 ## 4. physicsSimulation 設定
 
