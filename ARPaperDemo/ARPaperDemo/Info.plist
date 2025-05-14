@@ -19,5 +19,9 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSWorldSensingUsageDescription</key>
+	<string>このアプリは現実空間の平面検出のために空間認識を利用します。</string>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>このアプリは手や指の動きを検出するためにハンドトラッキングを利用します。</string>
 </dict>
 </plist>
