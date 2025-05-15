@@ -10,8 +10,6 @@ import RealityKit
 import RealityKitContent
 
 struct ImmersiveView: View {
-    @State private var planeAnchors: [AnchorEntity] = []
-
     var body: some View {
         RealityView { content in
             // 既存のImmersiveエンティティを追加
