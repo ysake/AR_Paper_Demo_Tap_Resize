@@ -44,7 +44,9 @@ struct ImmersiveView: View {
             for await update in provider.anchorUpdates {
                 switch update.event {
                 case .added, .updated:
-                    planeEntities[update.anchor.id] = makeEntity(for: update.anchor, color: .cyan.opacity(0.35))
+                    if update.anchor.classification == .table {
+                        planeEntities[update.anchor.id] = makeEntity(for: update.anchor, color: .cyan.opacity(0.35))
+                    }
                 case .removed:
                     planeEntities.removeValue(forKey: update.anchor.id)
                 }
@@ -55,12 +57,20 @@ struct ImmersiveView: View {
     }
 
     private func makeEntity(for anchor: PlaneAnchor, color: Color) -> Entity {
+        // メッシュは常に XY 平面で生成
         let mesh = MeshResource.generatePlane(
             width: anchor.geometry.extent.width,
-            depth: anchor.geometry.extent.height)
-        let material = SimpleMaterial(color: .cyan, roughness: 1, isMetallic: false)
+            height: anchor.geometry.extent.height
+        )
+        let material = SimpleMaterial(color: .init(color), roughness: 1, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
-        entity.setTransformMatrix(anchor.originFromAnchorTransform, relativeTo: nil)
+        // 2 段行列で「エクステント中心 in World」を取得
+        let worldFromExtent =
+                anchor.originFromAnchorTransform
+              * anchor.geometry.extent.anchorFromExtentTransform
+        
+        // XY平面メッシュを世界座標系における平面アンカーの位置・向きに移動
+        entity.setTransformMatrix(worldFromExtent, relativeTo: nil)
         return entity
     }
 }
