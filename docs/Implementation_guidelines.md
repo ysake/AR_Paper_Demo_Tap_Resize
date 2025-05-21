@@ -4,7 +4,7 @@
 
 * 検出した平面上に仮想的な用紙を配置する
 * 人差し指で平面を物理的にタップして用紙を配置する
-* 配置済みの用紙を両手の人差し指でサイズ変更する
+* 配置済みの用紙をサイズ変更する
 
 ---
 
@@ -40,6 +40,7 @@ for await update in provider.anchorUpdates {
 
 * PlaneDetectionProviderをインスタンス化し、ARKitSessionのrun([provider])で平面検出を開始する。
 * 検出イベントやPlaneAnchorの取得は、provider.anchorUpdatesを利用する。
+* Entityの管理は「全再生成」ではなく、anchorUpdatesのイベント（.added/.updated/.removed）ごとに個別に生成・更新・削除するのが推奨です。
 
 ---
 
@@ -64,10 +65,12 @@ entity.setTransformMatrix(worldFromExtent, relativeTo: nil)
 
 ---
 
-## 3. 手指トラッキング（HandTrackingProvider or SpatialTrackingSession）
+## 3. ハンドジェスチャー 検証
 
 - visionOSではHandTrackingProviderを直接利用する方法と、SpatialTrackingSession経由で手指トラッキングを有効化する方法がある。
 - どちらの方式も選択肢となるが、用途やAPI設計に応じて使い分ける。
+- **また、GestureProvider等のジェスチャー認識APIを活用することで、より高レベルな操作（タップ・ピンチ・グラブ等）で要件を満たせる可能性がある。**
+- **そのため、まずは「ジェスチャー認識APIで期待する体験が実現できるか」を検証するフェーズを設けることを推奨する。**
 
 ---
 
