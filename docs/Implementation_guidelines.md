@@ -4,7 +4,7 @@
 
 * 検出した平面上に仮想的な用紙を配置する
 * 人差し指で平面を物理的にタップして用紙を配置する
-* 配置済みの用紙を両手の人差し指でサイズ変更する
+* 配置済みの用紙をサイズ変更する
 
 ---
 
@@ -29,39 +29,48 @@
 ## 1. 平面検出の開始（PlaneDetectionProvider）
 
 ```swift
-let planeDetectionProvider = PlaneDetectionProvider()
-planeDetectionProvider.start()
+guard PlaneDetectionProvider.isSupported else { return }
+let session = ARKitSession()
+let provider = PlaneDetectionProvider(alignments: [.horizontal])
+try await session.run([provider])
+for await update in provider.anchorUpdates {
+    // アンカーごとの処理
+}
 ```
 
-* PlaneDetectionProviderをインスタンス化し、start()で平面検出を開始する。
-* 検出イベントやPlaneAnchorの取得は、PlaneDetectionProviderのイベントやクエリを利用する。
+* PlaneDetectionProviderをインスタンス化し、ARKitSessionのrun([provider])で平面検出を開始する。
+* 検出イベントやPlaneAnchorの取得は、provider.anchorUpdatesを利用する。
+* Entityの管理は「全再生成」ではなく、anchorUpdatesのイベント（.added/.updated/.removed）ごとに個別に生成・更新・削除するのが推奨です。
 
 ---
 
 ## 2. 平面検出と可視化（PlaneDetectionProvider + PlaneAnchor）
 
 ```swift
-// PlaneDetectionProviderで平面検出を有効化した状態で、
-// 検出されたPlaneAnchorごとに以下の処理を行う
-
-let extent = planeAnchor.extent // [width, depth]
-let mesh = MeshResource.generatePlane(width: extent.x, depth: extent.y)
-let material = SimpleMaterial(color: .blue.withAlphaComponent(0.3), isMetallic: false)
-let planeEntity = ModelEntity(mesh: mesh, materials: [material])
-planeEntity.position = .zero
-planeAnchor.addChild(planeEntity)
-scene.anchors.append(planeAnchor)
+let mesh = MeshResource.generatePlane(
+    width: anchor.geometry.extent.width,
+    height: anchor.geometry.extent.height
+)
+let material = SimpleMaterial(color: .cyan.opacity(0.35), roughness: 1)
+let entity = ModelEntity(mesh: mesh, materials: [material])
+let worldFromExtent =
+    anchor.originFromAnchorTransform *
+    anchor.geometry.extent.anchorFromExtentTransform
+entity.setTransformMatrix(worldFromExtent, relativeTo: nil)
+// RealityViewのcontent.add(entity)でシーンに追加
 ```
 
-* PlaneAnchorのextentを使うことで、検出した平面の大きさに一致した可視化が可能。
-* 平面の更新イベント（サイズ変化など）があれば、planeEntityのスケールやメッシュを動的に更新する。
+* PlaneAnchorのextentやTransform情報を使ってEntityを正しい位置・向き・サイズで配置し、RealityViewのcontent.add(entity)でシーンに追加する。
+* これは現状のAPI設計や公式サンプルの実装方針に基づくものであり、EntityのTransformをanchorの行列情報から計算して配置するのが推奨パターンです。
 
 ---
 
-## 3. 手指トラッキング（HandTrackingProvider or SpatialTrackingSession）
+## 3. ハンドジェスチャー 検証
 
 - visionOSではHandTrackingProviderを直接利用する方法と、SpatialTrackingSession経由で手指トラッキングを有効化する方法がある。
 - どちらの方式も選択肢となるが、用途やAPI設計に応じて使い分ける。
+- **また、GestureProvider等のジェスチャー認識APIを活用することで、より高レベルな操作（タップ・ピンチ・グラブ等）で要件を満たせる可能性がある。**
+- **そのため、まずは「ジェスチャー認識APIで期待する体験が実現できるか」を検証するフェーズを設けることを推奨する。**
 
 ---
 
@@ -85,32 +94,32 @@ leftTipAnchor.addChild(tipSphere)
 
 scene.subscribe(to: CollisionEvents.Began.self, on: tipSphere) { event in
   if event.entityB == planeEntity {
-    placePaper(at: tipSphere.position)
+    // 衝突時のTransform（位置・向き）を取得
+    let hitTransform = tipSphere.transformMatrix(relativeTo: nil)
+    placePaper(at: hitTransform)
   }
 }
 ```
 
 * `generateCollisionShapes()` で衝突コンポーネントを生成。
-* `CollisionEvents.Began` で指先と平面／紙の当たり判定を検出し、配置やリサイズ処理に繋げる。
+* `CollisionEvents.Began` で指先と平面／紙の当たり判定を検出し、衝突時のTransform（位置・向き）を取得して配置処理に渡す。
 
 ## 6. 仮想用紙の配置
 
 ```swift
-func placePaper(at position: SIMD3<Float>) {
+func placePaper(at transform: Transform) {
   let size = SIMD2<Float>(0.21, 0.297)
-  let mesh = MeshResource.generatePlane(width: size.x, depth: size.y)
-  let material = SimpleMaterial(color: .white.withAlphaComponent(0.9), isMetallic: false)
+  let mesh = MeshResource.generatePlane(width: size.x, height: size.y)
+  let material = SimpleMaterial(color: .white.opacity(0.9), roughness: 1)
   let paper = ModelEntity(mesh: mesh, materials: [material])
   paper.generateCollisionShapes(recursive: true)
-
-  let paperAnchor = AnchorEntity(anchor: planeAnchor.anchor!)
-  paperAnchor.addChild(paper)
-  paper.position = position
-  scene.addAnchor(paperAnchor)
+  // 衝突位置・向きに合わせてTransformをセット
+  paper.setTransformMatrix(transform.matrix, relativeTo: nil)
+  // RealityViewのcontent.add(paper)でシーンに追加
 }
 ```
 
-* A4 相当サイズの平面メッシュを生成し、`AnchorEntity` に追加。
+* 衝突時に取得したTransform（位置・向き）をsetTransformMatrixで反映し、用紙を正確な場所・向きに配置する。
 
 ## 7. 両手人差し指によるリサイズ
 
