@@ -2,6 +2,8 @@
 //  ImmersiveView.swift
 //  ARPaperDemo
 //
+//  Created by ysake on 2025/05/13.
+//
 //  机などの水平面を検出し、現実空間に“面ピッタリ”の半透明パネルを重ねて表示するビュー。
 //  PlaneDetectionProvider + RealityView(rootEntity方式) の標準実装例。
 //
@@ -107,8 +109,9 @@ struct ImmersiveView: View {
     private func updateEntity(_ entity: ModelEntity, with anchor: PlaneAnchor) {
         // サイズが大きく変わった時だけメッシュを再生成（小変化は行列のみ更新）
         let newExt = anchor.geometry.extent
-        if abs(entity.transform.scale.x - newExt.width) > 0.02 ||
-            abs(entity.transform.scale.z - newExt.height) > 0.02
+        let sizeChangeThreshold: Float = 0.02 // サイズ変化の閾値
+        if abs(entity.transform.scale.x - newExt.width) > sizeChangeThreshold ||
+            abs(entity.transform.scale.z - newExt.height) > sizeChangeThreshold
         {
             entity.model?.mesh = MeshResource.generatePlane(
                 width: newExt.width,
