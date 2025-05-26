@@ -45,6 +45,24 @@ struct ImmersiveView: View {
             // rootEntityをRealityView直下にadd（以降はrootEntity配下で平面を管理）
             content.add(rootEntity)
         }
+        .gesture(SpatialTapGesture()
+            .targetedToAnyEntity()
+            .onEnded { value in
+                guard let planeEntity = value.entity as? ModelEntity else { return }
+                // タップ位置をローカル(RealityView)座標系から平面エンティティ座標系に変換
+                let location = value.convert(value.location3D, from: .local, to: planeEntity)
+                
+                // 球体エンティティを生成
+                let sphereMesh = MeshResource.generateSphere(radius: 0.02) // 半径2cm
+                let sphereMaterial = SimpleMaterial(color: .red, roughness: 0.5, isMetallic: false)
+                let sphereEntity = ModelEntity(mesh: sphereMesh, materials: [sphereMaterial])
+                // 球体の位置をタップ位置に設定(z軸は平面に合わせる)
+                sphereEntity.position = .init(x: location.x, y: location.y, z: 0)
+                
+                // 平面エンティティの子として追加
+                planeEntity.addChild(sphereEntity)
+            }
+        )
         // View表示時に平面検出タスクを起動
         .task { await runPlaneDetection() }
     }
@@ -93,6 +111,11 @@ struct ImmersiveView: View {
         )
         let material = SimpleMaterial(color: .init(color), roughness: 1, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
+        
+        // タップジェスチャーに反応するようにコリジョンシェイプを生成する(子要素も含む)
+        entity.generateCollisionShapes(recursive: true)
+        // タップイベントを受け取れるようにする
+        entity.components.set(InputTargetComponent())
 
         // エクステント座標→世界座標変換行列で正しい位置・向きに配置
         let worldFromExtent =
