@@ -48,6 +48,16 @@ struct ImmersiveView: View {
         .gesture(SpatialTapGesture()
             .targetedToAnyEntity()
             .onEnded { value in
+                // 球体がタップされた場合は選択状態にする
+                if let sphereEntity = value.entity as? ModelEntity, sphereEntity.model?.mesh.resource is MeshResource.Sphere {
+                    // 選択状態の色に変更（例：緑色）
+                    let selectedMaterial = SimpleMaterial(color: .green, roughness: 0.5, isMetallic: false)
+                    sphereEntity.model?.materials = [selectedMaterial]
+                    // 必要ならカスタムコンポーネントで選択状態を管理も可能
+                    // sphereEntity.components.set(SelectedComponent())
+                    return
+                }
+                // それ以外（平面がタップされた場合）は球体を追加
                 guard let planeEntity = value.entity as? ModelEntity else { return }
                 // タップ位置をローカル(RealityView)座標系から平面エンティティ座標系に変換
                 let location = value.convert(value.location3D, from: .local, to: planeEntity)
@@ -60,6 +70,10 @@ struct ImmersiveView: View {
                 sphereEntity.position = .init(x: location.x, y: location.y, z: 0)
                 // ホバーエフェクトを有効化
                 sphereEntity.components.set(HoverEffectComponent())
+                // タップジェスチャーに反応するようにコリジョンシェイプを生成する(子要素も含む)
+                sphereEntity.generateCollisionShapes(recursive: true)
+                // タップイベントを受け取れるようにする
+                sphereEntity.components.set(InputTargetComponent())
                 
                 // 平面エンティティの子として追加
                 planeEntity.addChild(sphereEntity)
