@@ -58,6 +58,8 @@ struct ImmersiveView: View {
                 let sphereEntity = ModelEntity(mesh: sphereMesh, materials: [sphereMaterial])
                 // 球体の位置をタップ位置に設定(z軸は平面に合わせる)
                 sphereEntity.position = .init(x: location.x, y: location.y, z: 0)
+                // ホバーエフェクトを有効化
+                sphereEntity.components.set(HoverEffectComponent())
                 
                 // 平面エンティティの子として追加
                 planeEntity.addChild(sphereEntity)
