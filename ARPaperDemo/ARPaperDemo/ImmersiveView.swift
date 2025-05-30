@@ -27,6 +27,9 @@ import RealityKit
 import RealityKitContent
 import ARKit
 
+// 球体判定用のカスタムコンポーネント
+enum BallTagComponent: Component {}
+
 struct ImmersiveView: View {
     // ARKitセッション本体。Viewのライフサイクルに合わせて管理
     @State private var session = ARKitSession()
@@ -49,12 +52,9 @@ struct ImmersiveView: View {
             .targetedToAnyEntity()
             .onEnded { value in
                 // 球体がタップされた場合は選択状態にする
-                if let sphereEntity = value.entity as? ModelEntity, sphereEntity.model?.mesh.resource is MeshResource.Sphere {
-                    // 選択状態の色に変更（例：緑色）
+                if let sphereEntity = value.entity as? ModelEntity, sphereEntity.components.has(BallTagComponent.self) {
                     let selectedMaterial = SimpleMaterial(color: .green, roughness: 0.5, isMetallic: false)
                     sphereEntity.model?.materials = [selectedMaterial]
-                    // 必要ならカスタムコンポーネントで選択状態を管理も可能
-                    // sphereEntity.components.set(SelectedComponent())
                     return
                 }
                 // それ以外（平面がタップされた場合）は球体を追加
@@ -74,6 +74,8 @@ struct ImmersiveView: View {
                 sphereEntity.generateCollisionShapes(recursive: true)
                 // タップイベントを受け取れるようにする
                 sphereEntity.components.set(InputTargetComponent())
+                // 球体判定用タグを付与
+                sphereEntity.components.set(BallTagComponent())
                 
                 // 平面エンティティの子として追加
                 planeEntity.addChild(sphereEntity)
