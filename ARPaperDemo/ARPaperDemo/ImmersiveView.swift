@@ -110,13 +110,21 @@ struct ImmersiveView: View {
         // サイズが大きく変わった時だけメッシュを再生成（小変化は行列のみ更新）
         let newExt = anchor.geometry.extent
         let sizeChangeThreshold: Float = 0.02 // サイズ変化の閾値
-        if abs(entity.transform.scale.x - newExt.width) > sizeChangeThreshold ||
-            abs(entity.transform.scale.z - newExt.height) > sizeChangeThreshold
-        {
-            entity.model?.mesh = MeshResource.generatePlane(
-                width: newExt.width,
-                height: newExt.height
-            )
+
+        // 既存メッシュの実寸サイズを取得 (MeshResource.generatePlane は常に XY 平面)
+        if let currentMesh = entity.model?.mesh {
+            let currentWidth = currentMesh.bounds.extents.x
+            // bounds.extents.y は縦方向(高さ)
+            let currentHeight = currentMesh.bounds.extents.y
+
+            // サイズに大きな変化があった場合のみメッシュを再生成
+            if abs(currentWidth - newExt.width) > sizeChangeThreshold ||
+                abs(currentHeight - newExt.height) > sizeChangeThreshold {
+                entity.model?.mesh = MeshResource.generatePlane(
+                    width: newExt.width,
+                    height: newExt.height
+                )
+            }
         }
 
         // 行列更新で“面ピッタリ”を維持
