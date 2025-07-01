@@ -39,6 +39,8 @@ struct ImmersiveView: View {
     @State private var rootEntity = Entity()
     // 選択中の球体を保持
     @State private var selectedSphere: ModelEntity?
+    /// 選択中の球体の基準スケール（ピンチ開始時に記録し、拡大縮小の基準とする）
+    @State private var baseScale: SIMD3<Float> = SIMD3<Float>(repeating: 1.0)
 
     var body: some View {
         RealityView { content in
@@ -58,6 +60,8 @@ struct ImmersiveView: View {
                     let selectedMaterial = SimpleMaterial(color: .green, roughness: 0.5, isMetallic: false)
                     sphereEntity.model?.materials = [selectedMaterial]
                     selectedSphere = sphereEntity // 選択中の球体をセット
+                    // ピンチ開始時のスケールを記録
+                    baseScale = sphereEntity.scale
                     return
                 }
                 // それ以外（平面がタップされた場合）は球体を追加
@@ -83,16 +87,30 @@ struct ImmersiveView: View {
                 planeEntity.addChild(sphereEntity)
             }
         )
-        // ドラッグで選択中の球体を移動
-        .gesture(DragGesture()
-            .targetedToAnyEntity()
+        // ドラッグ＋ズームを同時に扱うSimultaneousGesture
+        .gesture(
+            SimultaneousGesture(
+                // ドラッグ(移動) ジェスチャー
+                DragGesture()
+                    .targetedToAnyEntity(),
+                // ズーム（拡大縮小）ジェスチャー
+                MagnifyGesture()
+            )
+            // DragGestureとMagnifyGestureの値を同時に受け取る
             .onChanged { value in
+                let dragValue = value.first
+                let magnifyValue = value.second
                 guard let sphere = selectedSphere else { return }
-                // ドラッグ位置をRealityView座標系から球体の親（平面）座標系に変換
-                if let parent = sphere.parent {
-                    let newLocation = value.convert(value.location3D, from: .local, to: parent)
+                // ドラッグ位置があれば、球体を移動
+                if let parent = sphere.parent, let dragValue {
+                    let newLocation = dragValue.convert(dragValue.location3D, from: .local, to: parent)
                     // z=0で平面上に固定
                     sphere.position = .init(x: newLocation.x, y: newLocation.y, z: 0)
+                }
+                // ズーム値があれば、球体を拡大縮小
+                if let magnifyValue {
+                    let scale = Float(magnifyValue.magnification)
+                    sphere.scale = baseScale * SIMD3<Float>(repeating: scale)
                 }
             }
         )
