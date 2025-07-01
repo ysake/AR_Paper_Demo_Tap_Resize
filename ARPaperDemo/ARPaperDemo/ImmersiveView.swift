@@ -34,6 +34,13 @@ struct ImmersiveView: View {
     @State private var planeEntities = [UUID: ModelEntity]()   // Anchor ID ➜ ModelEntity
     // RealityView直下に配置するrootEntity。全ての平面Entityの親
     @State private var rootEntity = Entity()
+    // コンテンツ内の球体を取得して操作するための状態
+    @State private var immersiveContent: Entity?
+    @State private var leftSphere: Entity?
+    @State private var rightSphere: Entity?
+    @State private var selectedSphere: Entity?
+    @State private var dragStart: SIMD3<Float>?
+    @State private var pinchStart: SIMD3<Float>?
 
     var body: some View {
         RealityView { content in
@@ -41,12 +48,20 @@ struct ImmersiveView: View {
             if let immersiveContentEntity = try? await Entity(named: "Immersive", in: realityKitContentBundle),
                !content.entities.contains(immersiveContentEntity) {
                 content.add(immersiveContentEntity)
+                immersiveContent = immersiveContentEntity
+                leftSphere = immersiveContentEntity.findEntity(named: "Sphere_Left")
+                rightSphere = immersiveContentEntity.findEntity(named: "Sphere_Right")
+                selectedSphere = leftSphere
             }
             // rootEntityをRealityView直下にadd（以降はrootEntity配下で平面を管理）
             content.add(rootEntity)
         }
         // View表示時に平面検出タスクを起動
         .task { await runPlaneDetection() }
+        // ジェスチャー処理
+        .gesture(tapSwitchGesture)
+        .simultaneousGesture(dragGesture)
+        .simultaneousGesture(pinchGesture)
     }
 
     /// 平面検出プロバイダを起動し、アンカーの追加/更新/削除イベントを監視
@@ -124,5 +139,45 @@ struct ImmersiveView: View {
                 anchor.originFromAnchorTransform
               * anchor.geometry.extent.anchorFromExtentTransform
         entity.setTransformMatrix(worldFromExtent, relativeTo: nil)
+    }
+
+    /// タップで左右の球体を切り替える
+    private var tapSwitchGesture: some Gesture {
+        TapGesture()
+            .onEnded {
+                if selectedSphere === leftSphere {
+                    selectedSphere = rightSphere
+                } else {
+                    selectedSphere = leftSphere
+                }
+            }
+    }
+
+    /// 選択中の球体をドラッグで移動
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard let sphere = selectedSphere else { return }
+                if dragStart == nil { dragStart = sphere.position }
+                sphere.position = dragStart! + SIMD3<Float>(Float(value.translation.width) / 500.0,
+                                                          0,
+                                                          Float(value.translation.height) / 500.0)
+            }
+            .onEnded { _ in
+                dragStart = nil
+            }
+    }
+
+    /// 選択中の球体をピンチで拡大縮小
+    private var pinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { amount in
+                guard let sphere = selectedSphere else { return }
+                if pinchStart == nil { pinchStart = sphere.scale }
+                sphere.scale = pinchStart! * Float(amount)
+            }
+            .onEnded { _ in
+                pinchStart = nil
+            }
     }
 }
