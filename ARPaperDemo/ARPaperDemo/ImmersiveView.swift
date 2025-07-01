@@ -28,7 +28,7 @@ import RealityKitContent
 import ARKit
 
 // 球体判定用のカスタムコンポーネント
-enum BallTagComponent: Component {}
+struct BallTagComponent: Component {}
 
 struct ImmersiveView: View {
     // ARKitセッション本体。Viewのライフサイクルに合わせて管理
@@ -37,6 +37,8 @@ struct ImmersiveView: View {
     @State private var planeEntities = [UUID: ModelEntity]()   // Anchor ID ➜ ModelEntity
     // RealityView直下に配置するrootEntity。全ての平面Entityの親
     @State private var rootEntity = Entity()
+    // 選択中の球体を保持
+    @State private var selectedSphere: ModelEntity?
 
     var body: some View {
         RealityView { content in
@@ -55,6 +57,7 @@ struct ImmersiveView: View {
                 if let sphereEntity = value.entity as? ModelEntity, sphereEntity.components.has(BallTagComponent.self) {
                     let selectedMaterial = SimpleMaterial(color: .green, roughness: 0.5, isMetallic: false)
                     sphereEntity.model?.materials = [selectedMaterial]
+                    selectedSphere = sphereEntity // 選択中の球体をセット
                     return
                 }
                 // それ以外（平面がタップされた場合）は球体を追加
@@ -76,9 +79,21 @@ struct ImmersiveView: View {
                 sphereEntity.components.set(InputTargetComponent())
                 // 球体判定用タグを付与
                 sphereEntity.components.set(BallTagComponent())
-                
                 // 平面エンティティの子として追加
                 planeEntity.addChild(sphereEntity)
+            }
+        )
+        // ドラッグで選択中の球体を移動
+        .gesture(DragGesture()
+            .targetedToAnyEntity()
+            .onChanged { value in
+                guard let sphere = selectedSphere else { return }
+                // ドラッグ位置をRealityView座標系から球体の親（平面）座標系に変換
+                if let parent = sphere.parent {
+                    let newLocation = value.convert(value.location3D, from: .local, to: parent)
+                    // z=0で平面上に固定
+                    sphere.position = .init(x: newLocation.x, y: newLocation.y, z: 0)
+                }
             }
         )
         // View表示時に平面検出タスクを起動
