@@ -69,8 +69,33 @@ entity.setTransformMatrix(worldFromExtent, relativeTo: nil)
 
 - visionOSではHandTrackingProviderを直接利用する方法と、SpatialTrackingSession経由で手指トラッキングを有効化する方法がある。
 - どちらの方式も選択肢となるが、用途やAPI設計に応じて使い分ける。
-- **また、GestureProvider等のジェスチャー認識APIを活用することで、より高レベルな操作（タップ・ピンチ・グラブ等）で要件を満たせる可能性がある。**
+- **また、SpatialTapGesture等のジェスチャー認識APIを活用することで、より高レベルな操作（タップ・ピンチ・グラブ等）で要件を満たせる可能性がある。**
 - **そのため、まずは「ジェスチャー認識APIで期待する体験が実現できるか」を検証するフェーズを設けることを推奨する。**
+
+### TapGesture vs SpatialTapGesture (vs DragGesture)
+- **TapGesture** は「画面上のタップ検出」に特化し、位置情報を返さないシンプルジェスチャー  
+- **SpatialTapGesture** は「3D 空間でのタップ位置（SIMD3<Float>）と対象エンティティ」を取得できる専用ジェスチャー  
+- **DragGesture** は 2D／3D 両対応のプロパティ（location3D, translation3D）を持つ汎用ジェスチャー  
+- 分離の主な理由は、後方互換性の維持、API の単純化、3D インタラクションの特異性明示
+
+#### 1. 歴史的背景と後方互換性
+- SwiftUI 1.0 で導入された TapGesture は「タップされたかどうか」だけを扱う設計  
+- 既存コードの挙動を壊さずに 3D 対応を追加するため、TapGesture はそのまま残し別型を用意
+
+#### 2. API の単純化と役割分担
+- **DragGesture**：位置情報を豊富に持つ汎用型として 2D／3D 両方をカバー  
+- **TapGesture**：あくまで「軽量かつ単純」なタップ検出に専念  
+- **SpatialTapGesture**：必要な場面でのみ 3D 情報を返す特化型
+
+#### SpatialTapGesture の必要性
+- **3D 座標取得**：タップ位置をワールド空間の SIMD3<Float> で受け取れる  
+- **Entity 特定**：`.targetedToAnyEntity()` でタップ対象の RealityKit Entity を直接取得  
+- 2D TapGesture や onTapGesture では「深度情報（Z 座標）」や対象エンティティが扱えない
+
+#### 設計思想まとめ
+1. **後方互換性** を壊さずに新機能を追加  
+2. **API の一貫性** と **学習コストの低減** を両立  
+3. **3D 空間インタラクション** の要件（深度・オブジェクト判定）を明確に切り分け
 
 ---
 

@@ -27,6 +27,9 @@ import RealityKit
 import RealityKitContent
 import ARKit
 
+// 球体判定用のカスタムコンポーネント
+struct BallTagComponent: Component {}
+
 struct ImmersiveView: View {
     // ARKitセッション本体。Viewのライフサイクルに合わせて管理
     @State private var session = ARKitSession()
@@ -34,6 +37,10 @@ struct ImmersiveView: View {
     @State private var planeEntities = [UUID: ModelEntity]()   // Anchor ID ➜ ModelEntity
     // RealityView直下に配置するrootEntity。全ての平面Entityの親
     @State private var rootEntity = Entity()
+    // 選択中の球体を保持
+    @State private var selectedSphere: ModelEntity?
+    /// 選択中の球体の基準スケール（ピンチ開始時に記録し、拡大縮小の基準とする）
+    @State private var baseScale: SIMD3<Float> = SIMD3<Float>(repeating: 1.0)
 
     var body: some View {
         RealityView { content in
@@ -45,6 +52,68 @@ struct ImmersiveView: View {
             // rootEntityをRealityView直下にadd（以降はrootEntity配下で平面を管理）
             content.add(rootEntity)
         }
+        .gesture(SpatialTapGesture()
+            .targetedToAnyEntity()
+            .onEnded { value in
+                // 球体がタップされた場合は選択状態にする
+                if let sphereEntity = value.entity as? ModelEntity, sphereEntity.components.has(BallTagComponent.self) {
+                    let selectedMaterial = SimpleMaterial(color: .green, roughness: 0.5, isMetallic: false)
+                    sphereEntity.model?.materials = [selectedMaterial]
+                    selectedSphere = sphereEntity // 選択中の球体をセット
+                    // ピンチ開始時のスケールを記録
+                    baseScale = sphereEntity.scale
+                    return
+                }
+                // それ以外（平面がタップされた場合）は球体を追加
+                guard let planeEntity = value.entity as? ModelEntity else { return }
+                // タップ位置をローカル(RealityView)座標系から平面エンティティ座標系に変換
+                let location = value.convert(value.location3D, from: .local, to: planeEntity)
+                
+                // 球体エンティティを生成
+                let sphereMesh = MeshResource.generateSphere(radius: 0.02) // 半径2cm
+                let sphereMaterial = SimpleMaterial(color: .red, roughness: 0.5, isMetallic: false)
+                let sphereEntity = ModelEntity(mesh: sphereMesh, materials: [sphereMaterial])
+                // 球体の位置をタップ位置に設定(z軸は平面に合わせる)
+                sphereEntity.position = .init(x: location.x, y: location.y, z: 0)
+                // ホバーエフェクトを有効化
+                sphereEntity.components.set(HoverEffectComponent())
+                // タップジェスチャーに反応するようにコリジョンシェイプを生成する(子要素も含む)
+                sphereEntity.generateCollisionShapes(recursive: true)
+                // タップイベントを受け取れるようにする
+                sphereEntity.components.set(InputTargetComponent())
+                // 球体判定用タグを付与
+                sphereEntity.components.set(BallTagComponent())
+                // 平面エンティティの子として追加
+                planeEntity.addChild(sphereEntity)
+            }
+        )
+        // ドラッグ＋ズームを同時に扱うSimultaneousGesture
+        .gesture(
+            SimultaneousGesture(
+                // ドラッグ(移動) ジェスチャー
+                DragGesture()
+                    .targetedToAnyEntity(),
+                // ズーム（拡大縮小）ジェスチャー
+                MagnifyGesture()
+            )
+            // DragGestureとMagnifyGestureの値を同時に受け取る
+            .onChanged { value in
+                let dragValue = value.first
+                let magnifyValue = value.second
+                guard let sphere = selectedSphere else { return }
+                // ドラッグ位置があれば、球体を移動
+                if let parent = sphere.parent, let dragValue {
+                    let newLocation = dragValue.convert(dragValue.location3D, from: .local, to: parent)
+                    // z=0で平面上に固定
+                    sphere.position = .init(x: newLocation.x, y: newLocation.y, z: 0)
+                }
+                // ズーム値があれば、球体を拡大縮小
+                if let magnifyValue {
+                    let scale = Float(magnifyValue.magnification)
+                    sphere.scale = baseScale * SIMD3<Float>(repeating: scale)
+                }
+            }
+        )
         // View表示時に平面検出タスクを起動
         .task { await runPlaneDetection() }
     }
@@ -93,6 +162,11 @@ struct ImmersiveView: View {
         )
         let material = SimpleMaterial(color: .init(color), roughness: 1, isMetallic: false)
         let entity = ModelEntity(mesh: mesh, materials: [material])
+        
+        // タップジェスチャーに反応するようにコリジョンシェイプを生成する(子要素も含む)
+        entity.generateCollisionShapes(recursive: true)
+        // タップイベントを受け取れるようにする
+        entity.components.set(InputTargetComponent())
 
         // エクステント座標→世界座標変換行列で正しい位置・向きに配置
         let worldFromExtent =
